@@ -1,0 +1,16 @@
+# --- Phase 0: environment setup + data source verification ---
+osmnx
+geopandas
+pandas
+numpy
+requests
+python-dotenv
+Pillow
+jupyter
+matplotlib
+
+# --- Later phases (pinned now so we only set up the venv once) ---
+lightgbm        # Phase 2: crash risk model
+torch           # Phase 3: curb ramp classifier (uses mps device on this Mac)
+torchvision     # Phase 3: curb ramp classifier
+scikit-learn    # Phase 2: train/test split, metrics

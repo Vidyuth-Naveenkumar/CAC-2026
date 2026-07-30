@@ -1,0 +1,17 @@
+.venv/
+__pycache__/
+*.pyc
+.env
+.DS_Store
+.ipynb_checkpoints/
+
+data/raw/
+data/images/
+data/interim/
+data/processed/
+!data/sample/
+
+models/*.pt
+models/*.txt
+
+.claude/settings.local.json

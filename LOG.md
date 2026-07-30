@@ -1,0 +1,29 @@
+# Project Log
+
+## 2026-07-29 — Phase 0: environment setup and data source verification
+
+- Created `.venv` with `uv` (Python 3.11.15). Confirmed `torch.backends.mps.is_available()` returns `True` on the M4.
+- Wrote `requirements.txt`, split into Phase 0 deps (osmnx, geopandas, pandas, requests, python-dotenv, Pillow, jupyter, matplotlib) and later-phase deps pinned now for a one-time setup (lightgbm, torch, torchvision, scikit-learn). All 128 packages installed cleanly — no GDAL/GEOS build issues on Apple Silicon.
+- Wrote `src/config.py` to centralize every path and the study area constant (`STUDY_AREA_NAME = "North Las Vegas, Nevada, USA"`), plus Mapillary token loading via `.env`.
+- Wrote and ran `src/data/verify_fars.py`: downloaded NHTSA FARS 2022 national data, filtered to Nevada (STATE == 32). **Passed** — 384 Nevada crash rows, all with valid `LATITUDE`/`LONGITUD`. Had to fix the CSV encoding to `utf-8-sig` (FARS files ship with a UTF-8 BOM that `latin-1` decoding mangled onto the `STATE` column name).
+- Wrote and ran `src/data/verify_osm.py`: pulls the drivable street network for the study area via osmnx and filters nodes with `street_count >= 3`. **Passed** — 6,631 intersections found, well above the ~3,000 estimate in CLAUDE.md (likely because `network_type="drive"` includes service roads/parking-lot driveways, and/or the original ~3,000 was a rough guess). Decision: accept 6,631 as the real count and treat ~3,000 as an outdated estimate — no filter changes made.
+- Wrote `src/data/verify_mapillary.py`. Registered an app at mapillary.com/dashboard/developers and added the client token to `.env` as `MAPILLARY_TOKEN`. **Passed** — 4 sample images returned near the Las Vegas Blvd N & Lake Mead Blvd test bounding box.
+- Wrote `README.md` with setup steps and verification script usage.
+
+**Phase 0 complete.** All three data sources (FARS, OSM, Mapillary) confirmed reachable. Ready to move to Phase 1.
+
+## 2026-07-30 — Phase 1: data pipeline
+
+- Added CRS constants (`ANALYSIS_CRS = EPSG:26911`, `STORAGE_CRS = EPSG:4326`) and Phase 1 parameters (FARS years, consolidation tolerance, crash snap radii, crossing search radius) to `src/config.py`.
+- Wrote `src/data/fetch_osm.py`: downloads + caches the drivable road network, study area boundary, marked crossings, and bus stops. Consolidates intersections with `ox.consolidate_intersections(tolerance=15)`, filters to `street_count >= 3`.
+- Wrote `src/data/fetch_fars.py`: downloads FARS accident.csv + pbtype.csv per year (2015-2023), filters to Nevada/Clark County pedestrian crashes (matched on `PBPTYPENAME == "Pedestrian"`, not the numeric code, since it drifts across years), drops sentinel coordinates, clips to the study area. Fixed a second FARS encoding bug: 2016's `pbtype.csv` has Windows-1252 characters (a smart quote) that aren't valid UTF-8 — added a `utf-8-sig` → `cp1252` fallback.
+- **Decision checkpoint (per phase1_spec.md):** North-Las-Vegas-only produced just 48 pedestrian crashes over 2015-2023, below the spec's >=80 threshold. Researched NV DOT's injury-crash data as a supplement — found NDOT's ArcGIS crash services (`CrashData_OpenData_2019_2023`, `CrashData_WebMap`) are currently decommissioned (confirmed directly against the live service catalog, not just a stale webpage); the only path is a manual data request form with unknown turnaround, and City of Las Vegas's open crash dataset doesn't cover North Las Vegas. **Decision: expanded the study area** instead, to Las Vegas + North Las Vegas + Henderson + Enterprise + Paradise + Spring Valley + Winchester + Whitney (Sunrise Manor excluded — confirmed via the raw Nominatim API that it has no OSM boundary polygon, only a point node). Re-ran `fetch_osm.py`/`fetch_fars.py` against the expanded area: 39,183 intersections, **459 pedestrian crashes** — well above threshold.
+- Wrote `src/utils/geo.py` (CRS reprojection helpers, `sjoin_nearest`-based snapping).
+- Wrote `src/data/build_features.py`: aggregates road features (lanes, speed with highway-class imputation, highway class, signals, marked crossings, lighting/sidewalk tags, transit distance) per intersection and joins crash counts (50m / 200m bands). Found `lit` and `sidewalk` tags are **completely absent** in this OSM extract (0/105,582 edges, not just sparse) — implemented to degrade gracefully rather than crash, logged clearly. Wrote `data/interim/intersections.geojson` (39,183 rows).
+- Wrote `src/data/validate_phase1.py`. Two issues found and resolved:
+  - Row-count check's original [1,500, 6,000] range assumed the old North-Las-Vegas-only scope; widened to [15,000, 50,000] for the expanded area (39,183 fits, and scales proportionally with the ~7x population increase).
+  - Geometry-boundary check initially flagged 199 points as "outside" the study area — turned out to be floating-point precision noise (max 0.75m), not real errors; switched from strict topological `.within()` to a 5m distance tolerance.
+  - Speed-range check found 14/9,064 intersections with genuine 5-10 mph OSM tags (access/parking roads) below the spec's 15 mph floor — real data, not parsing bugs. Widened the floor to 5 mph per your direction.
+  - **All 5 hard checks now pass.** 295 positive (crash-bearing) intersections, well above the >=80 exit gate.
+
+**Phase 1 exit gate met.** `data/interim/intersections.geojson` exists, passes all validation checks, has 295 positive intersections (gate requires >=80). Ready for Phase 2.
