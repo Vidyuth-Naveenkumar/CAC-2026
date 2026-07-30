@@ -1,0 +1,11 @@
+{
+  "recommendations": [
+    "ms-python.python",
+    "ms-python.vscode-pylance",
+    "ms-toolsai.jupyter",
+    "charliermarsh.ruff",
+    "ms-toolsai.datawrangler",
+    "mechatroner.rainbow-csv",
+    "anthropic.claude-code"
+  ]
+}
