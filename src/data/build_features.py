@@ -16,8 +16,15 @@ from src.config import (
     CRASH_SNAP_RADIUS_M,
     CRASH_MIDBLOCK_RADIUS_M,
     CROSSING_SEARCH_RADIUS_M,
+    NEARBY_INFRA_RADIUS_M,
 )
-from src.data.fetch_osm import get_graph, consolidate_and_filter, get_crossings, get_bus_stops
+from src.data.fetch_osm import (
+    get_graph,
+    consolidate_and_filter,
+    get_crossings,
+    get_bus_stops,
+    get_sidewalks_and_lamps,
+)
 from src.data.fetch_fars import get_pedestrian_crashes
 from src.utils.geo import to_analysis_crs, to_storage_crs, snap_to_nearest
 
@@ -209,6 +216,47 @@ def add_transit_distance(features: pd.DataFrame, bus_stops: gpd.GeoDataFrame) ->
     return features.reset_index()
 
 
+def add_sidewalk_length(features: pd.DataFrame, footways: gpd.GeoDataFrame) -> pd.DataFrame:
+    """sidewalk_len_100m: summed length of footway segments intersecting a
+    NEARBY_INFRA_RADIUS_M buffer around each intersection.
+
+    Sums each intersecting segment's FULL length rather than precisely
+    clipping to the circle. OSM footway segments are short (broken at each
+    node), so this is a standard, much cheaper approximation than computing
+    a Shapely intersection() per matched pair for ~39k buffers.
+    """
+    points = gpd.GeoDataFrame(features[["osmid", "geometry"]], geometry="geometry", crs="EPSG:4326")
+    points = to_analysis_crs(points)
+    buffers = points.copy()
+    buffers["geometry"] = points.geometry.buffer(NEARBY_INFRA_RADIUS_M)
+
+    footways_proj = to_analysis_crs(footways[["geometry"]]).copy()
+    footways_proj["length_m"] = footways_proj.geometry.length
+
+    joined = gpd.sjoin(buffers, footways_proj, predicate="intersects", how="inner")
+    lengths = joined.groupby("osmid")["length_m"].sum()
+
+    features = features.set_index("osmid")
+    features["sidewalk_len_100m"] = lengths.reindex(features.index, fill_value=0.0)
+    return features.reset_index()
+
+
+def add_street_lamp_count(features: pd.DataFrame, lamps: gpd.GeoDataFrame) -> pd.DataFrame:
+    """n_street_lamps_100m: count of street lamp points within NEARBY_INFRA_RADIUS_M."""
+    points = gpd.GeoDataFrame(features[["osmid", "geometry"]], geometry="geometry", crs="EPSG:4326")
+    points = to_analysis_crs(points)
+    buffers = points.copy()
+    buffers["geometry"] = points.geometry.buffer(NEARBY_INFRA_RADIUS_M)
+
+    lamps_proj = to_analysis_crs(lamps[["geometry"]])
+    joined = gpd.sjoin(buffers, lamps_proj, predicate="intersects", how="inner")
+    counts = joined.groupby("osmid").size()
+
+    features = features.set_index("osmid")
+    features["n_street_lamps_100m"] = counts.reindex(features.index, fill_value=0).astype(int)
+    return features.reset_index()
+
+
 def add_crash_counts(features: pd.DataFrame, crashes: gpd.GeoDataFrame) -> pd.DataFrame:
     """ped_crashes_10yr (<=50m) and ped_crashes_midblock_200m (50-200m)."""
     points = gpd.GeoDataFrame(
@@ -245,11 +293,21 @@ def build_intersections(force: bool = False) -> gpd.GeoDataFrame:
     intersections, edges = consolidate_and_filter(graph)
     crossings = get_crossings()
     bus_stops = get_bus_stops()
+    sidewalks_lamps = get_sidewalks_and_lamps()
+    footways = sidewalks_lamps[sidewalks_lamps["highway"] == "footway"]
+    lamps = sidewalks_lamps[sidewalks_lamps["highway"] == "street_lamp"]
     crashes = get_pedestrian_crashes()
 
     features = compute_road_features(intersections, edges)
     features = add_marked_crossings(features, crossings)
     features = add_transit_distance(features, bus_stops)
+    features = add_sidewalk_length(features, footways)
+    features = add_street_lamp_count(features, lamps)
+    print(
+        f"Coverage: sidewalk_len_100m > 0 for "
+        f"{(features['sidewalk_len_100m'] > 0).mean() * 100:.1f}% of intersections, "
+        f"n_street_lamps_100m > 0 for {(features['n_street_lamps_100m'] > 0).mean() * 100:.1f}%"
+    )
     features = add_crash_counts(features, crashes)
 
     # Stable deterministic ordering before assigning IDs.
@@ -269,6 +327,10 @@ def build_intersections(force: bool = False) -> gpd.GeoDataFrame:
         "has_marked_crossing",
         "has_lighting_tag",
         "has_sidewalk",
+        "sidewalk_len_100m",
+        # n_street_lamps_100m computed but excluded from output: only 4.5%
+        # coverage (< the spec's ~20% threshold), so it's noise, not signal
+        # (see phase2_spec.md Step 0 and LOG.md).
         "dist_to_transit_m",
         "ped_crashes_10yr",
         "ped_crashes_midblock_200m",

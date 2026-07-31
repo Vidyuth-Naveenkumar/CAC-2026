@@ -10,7 +10,9 @@ jupyter
 matplotlib
 
 # --- Later phases (pinned now so we only set up the venv once) ---
-lightgbm        # Phase 2: crash risk model
+lightgbm        # Phase 2: crash risk model (needs `brew install libomp` on macOS)
+shap            # Phase 2: model interpretation
+pyarrow         # Phase 2: parquet output
 torch           # Phase 3: curb ramp classifier (uses mps device on this Mac)
 torchvision     # Phase 3: curb ramp classifier
 scikit-learn    # Phase 2: train/test split, metrics

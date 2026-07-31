@@ -75,6 +75,9 @@ CRASH_SNAP_RADIUS_M = 50        # crash counts as "at" an intersection within th
 CRASH_MIDBLOCK_RADIUS_M = 200   # crash counts as "near" an intersection within this
 CROSSING_SEARCH_RADIUS_M = 30   # search radius for a marked crossing near a node
 
+# --- Phase 2: recovered sidewalk/lighting features ---
+NEARBY_INFRA_RADIUS_M = 100     # search radius for footways/street lamps near a node
+
 
 def ensure_dirs() -> None:
     """Create every writable data/output directory if it doesn't exist yet.

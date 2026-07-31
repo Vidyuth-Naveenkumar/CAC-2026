@@ -24,6 +24,7 @@ GRAPH_CACHE = OSM_RAW_DIR / "network.graphml"
 BOUNDARY_CACHE = OSM_RAW_DIR / "boundary.geojson"
 CROSSINGS_CACHE = OSM_RAW_DIR / "crossings.geojson"
 BUS_STOPS_CACHE = OSM_RAW_DIR / "bus_stops.geojson"
+SIDEWALKS_LAMPS_CACHE = OSM_RAW_DIR / "sidewalks_lamps.geojson"
 
 
 def get_graph(place_names: list[str] = STUDY_AREA_PLACES, force: bool = False) -> nx.MultiDiGraph:
@@ -103,6 +104,25 @@ def get_bus_stops(place_names: list[str] = STUDY_AREA_PLACES, force: bool = Fals
     return bus_stops
 
 
+def get_sidewalks_and_lamps(place_names: list[str] = STUDY_AREA_PLACES, force: bool = False) -> gpd.GeoDataFrame:
+    """Footway ways (sidewalks) and street lamp nodes, cached as GeoJSON.
+
+    `network_type="drive"` excludes footways entirely, and street lamps are
+    nodes rather than way tags, so neither shows up in the road graph or in
+    get_crossings/get_bus_stops. One combined query, split by the `highway`
+    tag value (footway vs street_lamp) by the caller — mixed LineString/
+    Point geometry in one GeoDataFrame is fine for GeoJSON.
+    """
+    if SIDEWALKS_LAMPS_CACHE.exists() and not force:
+        return gpd.read_file(SIDEWALKS_LAMPS_CACHE)
+
+    OSM_RAW_DIR.mkdir(parents=True, exist_ok=True)
+    tags = {"highway": ["footway", "street_lamp"], "footway": "sidewalk"}
+    features = ox.features_from_place(place_names, tags=tags)
+    features.to_file(SIDEWALKS_LAMPS_CACHE, driver="GeoJSON")
+    return features
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--force", action="store_true", help="Re-download even if cached")
@@ -127,3 +147,7 @@ if __name__ == "__main__":
     print("Fetching bus stops...")
     bus_stops = get_bus_stops(force=args.force)
     print(f"  {len(bus_stops)} bus stop nodes")
+
+    print("Fetching sidewalks and street lamps...")
+    sidewalks_lamps = get_sidewalks_and_lamps(force=args.force)
+    print(f"  {len(sidewalks_lamps)} features ({sidewalks_lamps['highway'].value_counts().to_dict()})")

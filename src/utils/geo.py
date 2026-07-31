@@ -6,6 +6,8 @@ gpd.sjoin_nearest() directly, so the CRS choice lives in exactly one place.
 """
 
 import geopandas as gpd
+import numpy as np
+import pandas as pd
 
 from src.config import ANALYSIS_CRS, STORAGE_CRS
 
@@ -43,3 +45,50 @@ def snap_to_nearest(
     return gpd.sjoin_nearest(
         points, targets, how="left", max_distance=max_distance_m, distance_col=distance_col
     )
+
+
+def spatial_kfold(
+    gdf: gpd.GeoDataFrame,
+    n_splits: int = 5,
+    cell_size_m: float = 2000,
+    seed: int = 42,
+) -> pd.Series:
+    """Assign each row to one of n_splits folds using whole grid cells.
+
+    Adjacent intersections share features and crash history, so a random
+    row split leaks information between train and validation. Instead,
+    bucket points into cell_size_m x cell_size_m grid cells and assign
+    whole cells to folds — never splitting a cell across folds.
+
+    gdf must already be in ANALYSIS_CRS (meters), consistent with
+    snap_to_nearest's convention. Returns fold labels (0..n_splits-1) as a
+    pandas Series aligned to gdf's index.
+
+    Label-agnostic on purpose (no crash-count awareness here) so it stays
+    reusable for other spatially-blocked CV needs later — the caller
+    decides what to do if a fold ends up with too few positives.
+    """
+    cell_x = (gdf.geometry.x // cell_size_m).astype(int)
+    cell_y = (gdf.geometry.y // cell_size_m).astype(int)
+    cell_id = pd.Series(list(zip(cell_x, cell_y)), index=gdf.index)
+
+    cell_counts = cell_id.value_counts()
+    cells = cell_counts.index.to_list()
+
+    # Shuffle before the greedy pass so cells aren't processed in
+    # coordinate order, which would bias which fold gets which region.
+    rng = np.random.default_rng(seed)
+    order = rng.permutation(len(cells))
+    cells = [cells[i] for i in order]
+
+    # Greedy bin-packing: assign the biggest cells first, each to
+    # whichever fold currently has the fewest rows, for balanced fold
+    # sizes despite uneven intersection density across cells.
+    fold_sizes = [0] * n_splits
+    cell_to_fold = {}
+    for cell in sorted(cells, key=lambda c: cell_counts[c], reverse=True):
+        fold = min(range(n_splits), key=lambda f: fold_sizes[f])
+        cell_to_fold[cell] = fold
+        fold_sizes[fold] += cell_counts[cell]
+
+    return cell_id.map(cell_to_fold)
