@@ -34,6 +34,15 @@ SAMPLE_DIR = DATA_DIR / "sample"
 MODELS_DIR = ROOT_DIR / "models"
 OUTPUTS_DIR = ROOT_DIR / "outputs"
 
+# --- Phase 6: Streamlit app ---
+# app/data/ is the one place gitignored data/ gets un-ignored -- Streamlit
+# Community Cloud deploys from the public repo and can't see anything else.
+APP_DIR = ROOT_DIR / "app"
+APP_DATA_DIR = APP_DIR / "data"
+APP_DATA_PATH = APP_DATA_DIR / "risk_scores_app.parquet"
+APP_DATA_MAX_MB = 10
+APP_DATA_FALLBACK_N = 15_000  # top-N-by-risk cutoff if APP_DATA_MAX_MB is exceeded
+
 # --- Study area ---
 # The full urbanized Las Vegas Valley: incorporated cities + unincorporated
 # Clark County CDPs. North-Las-Vegas-only gave just 48 pedestrian crashes
@@ -78,6 +87,11 @@ CROSSING_SEARCH_RADIUS_M = 30   # search radius for a marked crossing near a nod
 # --- Phase 2: recovered sidewalk/lighting features ---
 NEARBY_INFRA_RADIUS_M = 100     # search radius for footways/street lamps near a node
 
+# --- Phase 3: Mapillary coverage probe + image collection ---
+MAPILLARY_PROBE_SAMPLE_N = 200     # intersections sampled, stratified by risk decile
+MAPILLARY_PROBE_RADIUS_M = 25      # search radius around each intersection point
+MAPILLARY_PROBE_IMAGE_LIMIT = 10   # images fetched per site — only need to know >=1 / >=3
+
 
 def ensure_dirs() -> None:
     """Create every writable data/output directory if it doesn't exist yet.
@@ -94,6 +108,7 @@ def ensure_dirs() -> None:
         SAMPLE_DIR,
         MODELS_DIR,
         OUTPUTS_DIR,
+        APP_DATA_DIR,
     ]
     for directory in writable_dirs:
         directory.mkdir(parents=True, exist_ok=True)
