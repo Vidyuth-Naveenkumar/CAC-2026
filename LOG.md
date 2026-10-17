@@ -41,3 +41,19 @@
 - Wrote `outputs/figures/{feature_importance_gain,shap_summary,pdp_speed_lanes}.png`, `outputs/risk_scores.parquet` (39,183 rows: `int_id`, `risk_score`, `risk_percentile`), `models/risk_lgbm.txt`, `outputs/phase3_candidates.csv` (top 2,000 `int_id`s by risk score).
 
 **Phase 2 exit gate met.** No known-risk fallback needed — 459 crashes over the expanded study area turned out to be enough signal.
+
+## 2026-10-17 — Phase 3 Step 0: Mapillary coverage probe (BLOCKING — awaiting decision)
+
+- Wrote `src/data/mapillary_coverage_probe.py`: samples 200 intersections stratified evenly across the 10 risk deciles (20/decile), buffers each point 25m in `ANALYSIS_CRS` and reprojects to a bbox for the Mapillary Graph API v4 `/images` query (bbox is the only spatial filter the API offers — no native radius query), with exponential backoff on HTTP 429. Output: `outputs/mapillary_coverage_probe.csv`.
+- **Result at the spec's 25m radius: 25.0% of sampled intersections have >= 1 image, 18.0% have >= 3.** Per the spec's own thresholds (>=70% proceed, 40-70% proceed-with-restriction, <40% stop), this is a literal **STOP**.
+- **But coverage is not uniform — it tracks risk decile almost exactly, because it tracks road class almost exactly:**
+  - By `highway_class_max`: motorway/motorway_link/trunk 100%, primary 72%, secondary 71%, unclassified 50%, tertiary 22%, **residential 5.7%**.
+  - By risk decile: deciles 1-6 (lowest risk) range 0-15%; **deciles 9-10 (highest risk) are both 70%**.
+  - This is exactly the bias flagged in `docs/phase3_spec.md`'s KNOWN RISK section, now measured rather than assumed: arterials get driven and photographed, residential streets don't, and risk correlates with road class in this model (`highway_class_max` is the top feature importance from Phase 2).
+- **Radius sensitivity check** (same 200-site sample, re-queried at wider radii, informational only — not re-running the recorded probe):
+  - 25m: overall 25.0%, top-2-deciles 70.0% (28/40)
+  - 50m: overall 29.0%, top-2-deciles 72.5% (29/40)
+  - 100m: overall 39.5%, top-2-deciles 80.0% (32/40)
+  - Widening the radius barely moves the overall number (still <40% even at 100m) but the top-risk-decile number is consistently strong at every radius tested. The gap is structural (residential streets aren't photographed), not a radius artifact.
+- **The tension:** `outputs/phase3_candidates.csv` (the actual Phase 3 audit target — top 2,000 by risk) sits in territory that clears the proceed gate on its own. But the spec's Step 1 `random` set (mandatory, drawn from all 10 deciles specifically to avoid training the classifier only on arterial-looking intersections) lands mostly in deciles with near-zero coverage — so it would come back nearly empty, defeating its own purpose.
+- **Not proceeding past this point.** Per the spec, this is a blocking decision gate — reported to the user for a call on how to proceed before any site selection or downloading starts.

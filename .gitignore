@@ -15,3 +15,85 @@ models/*.pt
 models/*.txt
 
 .claude/settings.local.json
+
+
+## Step 2 — Deploy a hello-world TODAY
+
+Before building any real features, prove the deployment path works.
+
+1. Push the repo to a public GitHub repo
+2. `app/requirements.txt`: streamlit, pandas, pyarrow, folium,
+   streamlit-folium (pin versions)
+3. A 5-line `app/streamlit_app.py` that loads the parquet and
+   prints `len(df)`
+4. Deploy on Streamlit Community Cloud, confirm the URL loads
+
+**Do not proceed until a public URL renders.** Deployment problems
+discovered Thursday are fatal; discovered Saturday they are an
+inconvenience.
+
+## Step 3 — The app
+
+Single file, `app/streamlit_app.py`. Three tabs.
+
+### Tab 1: Map
+- Folium map centered on Las Vegas, zoom 10
+- All intersections as CircleMarkers, radius 3
+- Color by risk percentile: 90–100 red, 75–90 orange,
+  50–75 yellow, below 50 light grey
+- Use `FastMarkerCluster` or render only the filtered subset —
+  39,183 individual markers will hang the browser. If performance
+  is bad, default the filter to the top 5,000 and let the user
+  opt into everything.
+- Click popup: int_id, risk percentile, lanes, speed, road class,
+  signalized y/n, recorded crashes
+- Legend explaining the colors
+
+### Tab 2: Priority list
+- Sortable table, top N by risk (slider, 50–2,000, default 250)
+- Columns: rank, int_id, jurisdiction, risk percentile, speed,
+  lanes, road class, recorded crashes
+- `st.download_button` for CSV of the current filtered view
+
+### Tab 3: About
+Written content, not code. Cover:
+- The problem, in the slide-2 language
+- Data sources and licenses
+- Method: Poisson LightGBM, spatially blocked 5-fold CV
+- Results: ROC-AUC 0.919, PR-AUC 0.080 vs 0.0075 base rate,
+  recall@top-5% 51%
+- **Limitations**, verbatim and prominent:
+  - predicts crash frequency, not rate; top features are exposure proxies
+  - FARS is fatal-only, so serious injuries are invisible
+  - this is triage, not a verdict — it does not replace field inspection
+  - the Mapillary coverage finding (5.7% residential vs 100% motorway)
+
+### Sidebar filters
+- Multiselect: jurisdiction
+- Slider: minimum risk percentile (default 0)
+- Multiselect: road class
+- Checkbox: "only intersections with a recorded crash"
+- Live count of matching intersections
+
+## Step 4 — Performance
+
+Non-negotiable: cold load under 10 seconds.
+
+- `@st.cache_data` on the loader
+- Filter the dataframe BEFORE building map markers, never after
+- If still slow, cap rendered markers at 5,000 with a notice
+
+## Step 5 — Verify
+
+1. Open the public URL in a different browser or on your phone
+2. Click every filter
+3. Download the CSV and open it
+4. Click five map markers
+5. Have someone else open the link and try it without instructions
+
+## Exit gate
+- Public URL loads under 10s
+- All three tabs render, all filters work
+- CSV downloads and opens
+- About page complete including limitations
+- Verified from a device that is not your dev machine
