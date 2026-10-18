@@ -127,6 +127,42 @@ def render_map_tab(filtered: pd.DataFrame) -> None:
     st_folium(fmap, height=600, use_container_width=True, returned_objects=[])
 
 
+PRIORITY_DISPLAY_COLUMNS = {
+    "rank": "Rank",
+    "int_id": "Intersection ID",
+    "jurisdiction": "Jurisdiction",
+    "risk_percentile": "Risk percentile",
+    "max_speed_mph": "Speed (mph)",
+    "max_lanes": "Lanes",
+    "highway_class_max": "Road class",
+    "ped_crashes_10yr": "Recorded crashes",
+}
+
+
+def build_priority_table(filtered: pd.DataFrame, top_n: int) -> pd.DataFrame:
+    """Top top_n rows of `filtered` by risk_score, ranked and relabeled
+    per the Tab 2 column list in phase6_spec.md."""
+    top = filtered.nlargest(top_n, "risk_score").reset_index(drop=True)
+    top.insert(0, "rank", range(1, len(top) + 1))
+    return top[list(PRIORITY_DISPLAY_COLUMNS)].rename(columns=PRIORITY_DISPLAY_COLUMNS)
+
+
+def render_priority_tab(filtered: pd.DataFrame) -> None:
+    top_n = st.slider("Show top N by risk score", min_value=50, max_value=2000, value=250, step=50)
+    table = build_priority_table(filtered, top_n)
+    st.caption(f"Showing {len(table)} of {len(filtered)} filtered intersections.")
+
+    st.dataframe(table, width="stretch", hide_index=True)
+
+    csv = table.to_csv(index=False).encode("utf-8")
+    st.download_button(
+        "Download this table as CSV",
+        data=csv,
+        file_name="priority_intersections.csv",
+        mime="text/csv",
+    )
+
+
 def main() -> None:
     st.set_page_config(page_title="Pedestrian Infrastructure Gap Auditor", layout="wide")
     st.title("Pedestrian Infrastructure Gap Auditor")
@@ -139,6 +175,9 @@ def main() -> None:
 
     with map_tab:
         render_map_tab(filtered)
+
+    with priority_tab:
+        render_priority_tab(filtered)
 
 
 if __name__ == "__main__":
