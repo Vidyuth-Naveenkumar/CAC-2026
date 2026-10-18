@@ -163,6 +163,64 @@ def render_priority_tab(filtered: pd.DataFrame) -> None:
     )
 
 
+def render_about_tab() -> None:
+    st.markdown(
+        """
+## The problem
+
+Pedestrians are killed and seriously injured at intersections across the
+Las Vegas valley every year, but the agencies responsible for fixing
+dangerous intersections can't inspect all **39,183** of them by hand.
+This tool ranks every intersection in the study area (Las Vegas, North Las
+Vegas, Henderson, Enterprise, Paradise, Spring Valley, Winchester, and
+Whitney) by predicted pedestrian-safety risk, so a small field-inspection
+team can start with the locations most likely to matter.
+
+## Data sources
+
+- **Crashes:** NHTSA's Fatality Analysis Reporting System (FARS),
+  2015-2023, Nevada records clipped to the study area. Public domain
+  US government data.
+- **Roads and intersections:** OpenStreetMap, via the `osmnx` library.
+  © OpenStreetMap contributors, licensed
+  [ODbL](https://www.openstreetmap.org/copyright).
+
+## Method
+
+A LightGBM model with a Poisson objective predicts expected pedestrian
+crashes per intersection from road features alone (lanes, speed limit,
+road class, signals, marked crossings, transit distance, and more) --
+so a dangerous-looking intersection can be flagged even if it hasn't had
+a crash yet. Evaluated with 5-fold **spatially blocked** cross-validation
+(whole geographic regions held out together, not random individual rows)
+so the score reflects generalizing to new places, not memorizing nearby
+intersections.
+
+**Results (spatially-blocked CV):** ROC-AUC 0.919, PR-AUC 0.080 against a
+0.75% base rate (about **10.6x** better than chance at this metric), and
+investigating just the top 5% of intersections by predicted risk would
+have caught about **51%** of all recorded pedestrian crashes.
+
+## Limitations
+
+- **This model predicts crash frequency, not design quality or a crash
+  rate.** Its top features (road class, distance to transit) are proxies
+  for how much pedestrian exposure a location gets, not a measurement of
+  how badly designed it is.
+- **FARS only records fatal crashes.** Serious but non-fatal pedestrian
+  injuries are invisible to this model entirely.
+- **This is triage, not a verdict.** A high rank means "look here first,"
+  not "this intersection is unsafe" -- it does not replace a field
+  inspection.
+- **Street-level imagery coverage is heavily biased toward busy roads.**
+  A coverage probe of Mapillary imagery found only 5.7% of residential
+  intersections had any nearby photo, versus 100% of motorway/trunk
+  intersections -- which is why this app doesn't attempt an
+  imagery-based infrastructure audit yet.
+        """
+    )
+
+
 def main() -> None:
     st.set_page_config(page_title="Pedestrian Infrastructure Gap Auditor", layout="wide")
     st.title("Pedestrian Infrastructure Gap Auditor")
@@ -178,6 +236,9 @@ def main() -> None:
 
     with priority_tab:
         render_priority_tab(filtered)
+
+    with about_tab:
+        render_about_tab()
 
 
 if __name__ == "__main__":
