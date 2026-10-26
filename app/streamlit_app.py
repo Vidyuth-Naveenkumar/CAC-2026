@@ -222,8 +222,8 @@ have caught about **51%** of all recorded pedestrian crashes.
 
 
 def main() -> None:
-    st.set_page_config(page_title="Pedestrian Infrastructure Gap Auditor", layout="wide")
-    st.title("Pedestrian Infrastructure Gap Auditor")
+    st.set_page_config(page_title="SightLine", layout="wide")
+    st.title("SightLine")
 
     df = load_data()
     jurisdictions, min_percentile, road_classes, crashes_only = render_sidebar(df)
