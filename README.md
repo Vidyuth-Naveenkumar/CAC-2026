@@ -1,4 +1,4 @@
-# Pedestrian Infrastructure Gap Auditor
+# SightLine
 
 Congressional App Challenge submission. Ranks street intersections in the
 Las Vegas Valley, NV by pedestrian safety priority, by fusing:
